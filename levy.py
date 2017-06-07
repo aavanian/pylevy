@@ -28,6 +28,7 @@ Does not support alpha values less than 0.5.
 
 import sys
 import numpy as np
+import scipy
 import scipy.special as sp
 
 __version__ = "0.5"
@@ -100,15 +101,15 @@ def _calculate_levy(x, alpha, beta, cdf=False):
 
     if cdf:
         # Cumulative density function
-        return (integrate.quad(lambda u: u and func_cos(u) / u or 0.0, 0.0, integrate.Inf, weight="sin", wvar=x,
+        return (integrate.quad(lambda u: u and func_cos(u) / u or 0.0, 0.0, np.inf, weight="sin", wvar=x,
                                limlst=1000)[0]
-                + integrate.quad(lambda u: u and func_sin(u) / u or 0.0, 0.0, integrate.Inf, weight="cos", wvar=x,
+                + integrate.quad(lambda u: u and func_sin(u) / u or 0.0, 0.0, np.inf, weight="cos", wvar=x,
                                  limlst=1000)[0]
                 ) / np.pi + 0.5
     else:
         # Probability density function
-        return (integrate.quad(func_cos, 0.0, integrate.Inf, weight="cos", wvar=x, limlst=1000)[0]
-                - integrate.quad(func_sin, 0.0, integrate.Inf, weight="sin", wvar=x, limlst=1000)[0]
+        return (integrate.quad(func_cos, 0.0, np.inf, weight="cos", wvar=x, limlst=1000)[0]
+                - integrate.quad(func_sin, 0.0, np.inf, weight="sin", wvar=x, limlst=1000)[0]
                 ) / np.pi
 
 
@@ -144,10 +145,10 @@ def _interpolate(points, grid, lower, upper):
     ravel_grid = np.ravel(grid)
 
     result = np.zeros(np.shape(points)[:-1], 'float64')
-    for i in xrange(1 << (dims * 2)):
+    for i in range(1 << (dims * 2)):
         weights = np.ones(np.shape(points)[:-1], 'float64')
         ravel_offset = 0
-        for j in xrange(dims):
+        for j in range(dims):
             n = (i >> (j * 2)) % 4
             ravel_offset = ravel_offset * grid_shape[j] + \
                            np.maximum(0, np.minimum(grid_shape[j] - 1, floors[:, j] + (n - 1)))
@@ -175,12 +176,12 @@ def _make_data_file():
     size = (200, 50, 51)
     pdf = np.zeros(size, 'float64')
     cdf = np.zeros(size, 'float64')
-    xs, alphas, betas = [np.linspace(_lower[i], _upper[i], size[i], endpoint=True) for i in xrange(len(size))]
+    xs, alphas, betas = [np.linspace(_lower[i], _upper[i], size[i], endpoint=True) for i in range(len(size))]
 
-    print "Generating levy_data.py ..."
+    print("Generating levy_data.py ...")
     for i, alpha in enumerate(alphas):
         for j, beta in enumerate(betas):
-            print "Calculating alpha={}, beta={}".format(alpha, beta)
+            print("Calculating alpha={}, beta={}".format(alpha, beta))
             for k, x in enumerate(xs):
                 pdf[k, i, j] = _levy_tan(x, alpha, beta)
                 cdf[k, i, j] = _levy_tan(x, alpha, beta, True)
@@ -190,11 +191,13 @@ def _make_data_file():
 # This is a generated file, do not edit.
 import numpy, base64
 
-pdf = numpy.loads(base64.decodestring(
-\"\"\"%s\"\"\"))\n
-cdf = numpy.loads(base64.decodestring(
-\"\"\"%s\"\"\"))\n""" %
-               (base64.encodestring(pdf.dumps()), base64.encodestring(cdf.dumps())))
+pdf = numpy.loads(base64.decodebytes(
+%s
+))\n
+cdf = numpy.loads(base64.decodebytes(
+%s
+))\n""" %
+               (base64.encodebytes(pdf.dumps()), base64.encodebytes(cdf.dumps())))
     file.close()
 
 
@@ -238,20 +241,21 @@ def _make_approx_data_file():
         np.linspace(_lower[1], _upper[1], size[0], endpoint=True),
         np.linspace(0, _upper[2], size[1], endpoint=True)]
 
-    print "Generating levy_approx_data.py ..."
+    print("Generating levy_approx_data.py ...")
     for i, alpha in enumerate(alphas):
         for j, beta in enumerate(betas):
             limits[i, j] = _get_closest_approx(alpha, beta)
-            print "Calculating alpha={}, beta={}, limit={}".format(alpha, beta, limits[i, j])
+            print("Calculating alpha={}, beta={}, limit={}".format(alpha, beta, limits[i, j]))
 
     file = open("levy_approx_data.py", "wt")
     file.write("""
 # This is a generated file, do not edit.
 import numpy, base64
 
-limits = numpy.loads(base64.decodestring(
-\"\"\"%s\"\"\"))\n""" %
-               (base64.encodestring(limits.dumps()),))
+limits = numpy.loads(base64.decodebytes(
+%s
+))\n""" %
+               (base64.encodebytes(limits.dumps()),))
     file.close()
 
 
@@ -301,8 +305,8 @@ def levy(x, alpha, beta, mu=0.0, sigma=1.0, cdf=False, par=0):
     if cdf is False:
         interpolated = interpolated / sigma
         approximated = approximated / sigma
-    res[mask] = interpolated
-    res[~mask] = approximated
+    res[mask] = interpolated    # fixme FutureWarning: in the future, boolean array-likes will be handled as a boolean array index
+    res[~mask] = approximated   # fixme FutureWarning: in the future, boolean array-likes will be handled as a boolean array index
     return res
 
 
@@ -346,13 +350,9 @@ def fit_levy(x, alpha=None, beta=None, mu=None, sigma=None, par=0):
     """
 
     # The parametrization is changed to par=0, if is par=1. At the end, the parametrization is reverted.
-    if mu is not None:
-        if par == 0:
-            mu0 = mu
-        elif par == 1:
-            mu0 = mu + beta * sigma * np.tan(np.pi * alpha / 2.0)  # Par 1 is changed
-    elif mu is None:
-        mu0 = mu
+    mu0 = mu
+    if mu is not None and par == 1:
+        mu0 = mu + beta * sigma * np.tan(np.pi * alpha / 2.0)  # Par 1 is changed
 
     from scipy import optimize
 
@@ -366,7 +366,7 @@ def fit_levy(x, alpha=None, beta=None, mu=None, sigma=None, par=0):
         alpha, beta, mu, sigma = p
         return np.sum(neglog_levy(x, alpha, beta, mu, sigma))
 
-    parameters.x = optimize.fmin(neglog_density, parameters.x, disp=0)
+    parameters.x = optimize.fmin(neglog_density, parameters.x, disp=False)
     alpha, beta, mu, sigma = parameters.get_all()
     return alpha, beta, mu, sigma, neglog_density(parameters.x)
 
@@ -438,13 +438,13 @@ def fit_levy(x, alpha=None, beta=None, mu=None, sigma=None, par=0):
     # mu0 = get_mu0(parameters)
     # sigma = get_sigma(parameters)
     # neglog_final = _neglog_density(parameters)
-
-    if par == 0:
-        mu = mu0
-    elif par == 1:
-        mu = mu0 - beta * sigma * np.tan(np.pi * alpha / 2.0)
-
-    return alpha, beta, mu, sigma, neglog_final
+    #
+    # if par == 0:
+    #     mu = mu0
+    # elif par == 1:
+    #     mu = mu0 - beta * sigma * np.tan(np.pi * alpha / 2.0)
+    #
+    # return alpha, beta, mu, sigma, neglog_final
 
 
 def random(alpha, beta, mu=0.0, sigma=1.0, shape=(), par=0):
@@ -485,12 +485,17 @@ def random(alpha, beta, mu=0.0, sigma=1.0, shape=(), par=0):
     return mu0 + sigma * k
 
 
+def ppf(q, alpha, beta, mu=0.0, sigma=1.0, par=0):
+    tgt = lambda x: (levy(np.array(x), alpha, beta, mu, sigma, cdf=True, par=par) - q) ** 2
+    return scipy.optimize.minimize_scalar(tgt).x
+
+
 if __name__ == "__main__":
     if "build" in sys.argv[1:]:
         _make_data_file()
         _make_approx_data_file()
 
-    print "Testing fit_levy."
+    print("Testing fit_levy.")
 
-    print "1000 points, result should be (1.5, 0.5, 0.0, 1.0)."
-    print fit_levy(random(1.5, 0.5, 0.0, 1.0, 1000))
+    print("1000 points, result should be (1.5, 0.5, 0.0, 1.0).")
+    print(fit_levy(random(1.5, 0.5, 0.0, 1.0, 1000)))
